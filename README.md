@@ -4,7 +4,7 @@
 them into the software (ipfw, ipfilter, ipfdadm, ipchains, iptables and
 cisco acl supported) you need.*
 
-*"HLFL stands for High Level Firewall Language. It permits writting
+*"HLFL stands for High Level Firewall Language. It permits writing
 firewalling rules using a high level language, and transforms them into
 rules for real softwares" from the HLFL README file.*
 
