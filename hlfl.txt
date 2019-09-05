@@ -1,0 +1,290 @@
+
+
+		HIGH LEVEL FIREWALL LANGUAGE
+		----------------------------
+		            por Miguel Salva
+
+
+
+ * QUE ES HIGH LEVEL FIREWALL LANGUAGE ?
+
+   HLFL es un proyecto para crear un lenguaje generico de reglas firewall, y
+ poder traducir luego esas especificaciones a cualquier otro firewall. De lo
+ que se trata es de abstraer las reglas firewall para poder escribirlas
+ en un lenguaje unico, y poder realizar la conversion al software
+ especifico de la plataforma con la que deseemos trabajar (como iptables bajo
+ Linux o ipfw bajo FreeBSD, por ejemplo) posteriormente.
+
+   HLFL nos permite cosas como crear unas reglas firewall independientes
+ del sistema sobre el cual vaya a correr ese firewall, o asegurarnos de que
+ dos maquinas con distintos sistemas operativos y/o sobre distintas
+ plataformas van a tener el mismo comportamiento en red.
+
+   HLFL ha sido desarrollado por Renaud Deraison (autor de la conocida
+ herramienta de seguridad Nessus) y Arnaud S. Launay. La pagina web del
+ proyecto es http://www.hlfl.org, pero poca cosa podemos encontrar alli,
+ aparte del propio paquete HLFL y algo de informacion basica.
+ La ultima version de la aplicacion es la 0.60 y hasta el momento soporta
+ traduccion a reglas de ipfw, ipfilter, ipfwadm, ipchains, netfilter/iptables
+ y cisco acl.
+
+   HLFL es un lenguaje de reglas con una sintaxis muy sencilla. Cualquiera
+ con un minimo de experiencia con cualquier otro firewall puede aprender a
+ escribir reglas con este lenguaje en pocos minutos.
+
+   HLFL funciona (o deberia funcionar) bajo cualquier sistema UNIX,
+ incluido un port existente para MacOSX. El programa es software libre,
+ y esta bajo la licencia GPL (la licencia de GNU).
+
+   Al bajar las fuentes de la aplicacion de hlfl.org, tendremos que compilarlo
+ e instalarlo con el ./configure ; make ; make install tipico. Comprueba tu
+ path ya que el binario hlfl se instala en /usr/local/bin por defecto (al
+ pasar el script configure podemos establecer otro directorio de instalacion).
+ Una vez instalado su uso es muy sencillo:
+
+ [root@CLG /root]# hlfl tipo <reglas.hlfl> reglas_traducidas
+
+ Siendo 'tipo' el firewall al que queremos traducir las reglas, <reglas.hlfl>
+ el fichero de reglas escritas en HLFL (no olvidar escribir < >) y
+ 'reglas_traducidas' el nombre del fichero en el que queremos que se almacenen
+ las reglas ya traducidas al firewall deseado.
+
+ 'Tipo' ha de ser uno de los siguientes:
+	- ipfw:			Firewall de FreeBSD
+	- ipfilter:		Firewall de NetBSD
+	- ipfwadm:		Firewall de kernels Linux 2.0.x
+	- ipchains:		Firewall de kernels Linux 2.2.x
+	- netfilter/iptables:	Firewall de kernels Linux 2.4.x
+	- cisco:		ACL de los routers/PIX Cisco
+
+ El soporte iptables ha sido implementado por primera vez en la version
+ actual, la 0.60. Desde la version 3.0, OpenBSD hace uso de packet
+ filter (pf) como herramienta firewall por defecto, debido a problemas
+ de licencia con ipfilter, usada anteriormente.
+
+
+
+ * SINTAXIS DE HIGH LEVEL FIREWALL LANGUAGE
+
+   - Comentarios
+
+   Existen tres tipos de comentarios en HLFL:
+
+   % Comenta la linea actual. No incluido en el fichero final.
+   # Comenta la linea actual. Incluido en el fichero final, excepto Cisco ACL.
+   ! Se incluyen como reglas en el fichero final.
+
+   El comentario ! se usa, por ejemplo, para a�adir reglas de masquerading
+   mediante la cadena FORWARD de ipchains, ya que HLFL no soporta
+   masquerading. Ejemplo:
+
+   !ipchains -A forward -s 0/0 -d 0/0 -j eth0 -j ACCEPT
+
+   Evidentemente de nada sirve a�adir reglas de ipchains con ! y luego
+   traducirlas a algun lenguaje de reglas que no sea ipchains.
+   Podemos usar las sentencias if y else con este comentario:
+
+   !if (ipchains) ipchains -A forward -s 0/0 -d 0/0 -j eth0 -j ACCEPT
+   !else echo "No esta soportado masquerading"; exit
+
+   Si solo usamos !if la regla se escribira solo si traducimos reglas de
+   ipchains. Esto nos permite crear reglas genericas y ajustarlas un poco
+   mas cuando sea necesario con algun firewall en particular.
+
+
+   - Sintaxis de Reglas
+
+   La sintaxis general de cualquier regla escrita en HLFL es:
+
+   protocolo (local) operador (remoto) [interfaces]
+
+   Protocolo:	El protocolo de red sobre el que corre la regla que creamos.
+   Local: 	La red/host que tenemos que proteger.
+   Operador: 	La accion que se realiza.
+   Remoto: 	La red/host de la que tenemos que ser protegidos.
+   Interfaces: 	Las interfaces de red sobre las que son validas esa regla.
+
+   Ejemplo:
+
+   # Denegar todo el trafico TCP entre 192.168.1.1 y 192.168.2.1 via eth0
+   tcp (192.168.1.1) X (192.168.2.1) [eth0]
+
+   # Permitir trafico saliente a cualquier sitio via eth0
+   all (any) -> (any) [eth0]
+
+   PROTOCOLO: Podemos usar los protocolos de red TCP, UDP e ICMP.
+ Si usamos all los englobamos todos.
+
+   LOCAL Y REMOTO: Indican las redes (o hosts) sobre las que se aplican las
+ reglas. Podemos trabajar en varios formatos:
+
+   (192.168.1.1 1-1024)		# IP 192.168.1.1 , puertos entre 1 y 1024
+   (192.168.1.1 22,80)		# IP 192.168.1.1 , puertos 22 y 80
+   (192.168.1.1 1024-)		# IP 192.168.1.1 , puertos 1024 y siguientes
+   (192.168.1.1 | 192.168.1.3)	# IPs 192.168.1.1 y 192.168.1.3
+   (192.168.1.1 23 | 192.168.1.3 22)	# IP 192.168.1.1 , puerto 23 y
+					# IP 192.168.1.3 , puerto 22
+   ((192.168.1.1 | 192.168.1.3) 21,23)	# IPs 192.168.1.1 y 192.168.1.3 ,
+					# puertos 21 y 23 de ambas
+
+   OPERADORES: Podemos trabajar con los siguientes operadores:
+
+   ->	acepta salida
+   <-	acepta entrada
+   <->	acepta entrada y salida
+   <=>> acepta entrada y salida si la comunicacion ha sido establecida
+	previamente por nuestra maquina
+   <<=> acepta entrada y salida si la comunicacion ha sido establecida
+	previamente por el host remoto
+   X	deniega entrada y salida
+   X!	rechaza entrada y salida
+   X->	deniega salida
+   <-X  deniega entrada
+   X!-> rechaza salida
+   <-X! rechaza entrada
+
+   La diferencia entre denegar una conexion y rechazarla (DENY y REJECT
+ usualmente) estriba en que denegarla es rechazarla sin notificarlo, es decir,
+ como si nunca hubiesemos recibido la peticion.
+
+   INTERFACES: Podemos trabajar con todos los interfaces de red. Si no ponemos
+ ningun interfaz en una regla, esta se aplicara para TODOS los existentes. Si
+ ponemos alguno podemos poner uno [ppp0], varios [eth0,ppp0] o ninguno (coge
+ por defecto todos los existentes).
+
+   PALABRAS CLAVE: En esta ultima version (la 0.60) se ha introducido el
+ soporte para palabras clave, con el fin de acercar mas las reglas HLFL al
+ propio lenguaje natural. Estas palabras clave no aportan funcionalidades
+ nuevas o diferentes al lenguaje, sino que pretenden hacerlo mas claro:
+
+   # Permitir todo el trafico entre 192.168.1.1 y 192.168.2.1 via eth0
+   tcp (192.168.1.1) accept from and to (192.168.2.1) on eth0
+   # Misma regla que: tcp (192.168.1.1) <-> (192.168.2.1) [eth0]
+
+   Las palabras clave aceptadas son: accept, deny, reject (operadores),
+ from, to (local y remoto), and (union de dos o mas relaciones),
+ established (operadores <=>> y <<=>) y log (logs del firewall).
+
+   HLFL tiene soporte para logs. Para loguear una regla simplemente hemos de
+ a�adir la palabra clave 'log' en el operador (ya sea delante o detras del
+ mismo). Ejemplos:
+
+   X log	# Loguea y rechaza
+   log ->	# Loguea y acepta salida
+
+
+   - Protocolo ICMP
+
+   El protocolo ICMP (Internet Control Message Protocol) es el protocolo
+ de red encargado de comunicar al host origen que se ha producido algun error
+ durante el proceso de conexion.
+
+   HLFL permite manejar varios tipos de mensajes ICMP:
+	echo-request
+	echo-reply
+	destination-unreachable
+	time-exceed
+
+   Uno de los usos mas comunes de ICMP es el ping (echo-request, echo-reply).
+ Para poder utilizar ping desde nuestros firewalls hemos de a�adir las
+ siguientes reglas:
+
+   icmp (any echo-request) -> (any)
+   icmp (any) <- (any echo-reply)
+
+   Con estas reglas permitimos el uso del ping desde nuestra maquina, pero no
+ lo permitimos hacia ella, evitando asi posibles tecnicas como ICMP Tunneling.
+ Para aceptar pings solo habria que invertir la secuencia anterior, o
+ modificar el operador de las reglas anteriores para que aceptase entrada y
+ salida.
+
+
+   - Defines e Includes
+
+   HLFL permite definir variables con la estructura: define 'variable' 'valor'.
+   Ejemplos:
+
+   define telnet 23
+   define intranet 192.168.1.0/24
+
+   Un uso muy util de los defines es para mantener la compatibilidad entre
+ sistemas desde los interfaces de red, ya que de nada sirve definir ppp0,
+ por ejemplo, en un router Cisco:
+
+   !if (ipchains) define red eth0
+   !if (cisco) define red FastEthernet 0
+   !if (ipfilter) define red le0
+
+   HLFL tambien permite definir includes (de la misma manera que C). Si
+ las dos sentencias anteriores estuvieran en un fichero llamado defines.hlfl,
+ en nuestro fichero de reglas HLFL solo tendriamos que escribir para poder
+ usarlas:
+
+   include defines.hlfl
+
+   El uso de includes permite tener un codigo mucho mas estructurado.
+
+   Junto con la documentacion de HLFL, en el mismo paquete, se incluye un
+ fichero muy interesante llamado services.hlfl que permite al incluirlo
+ trabajar con los nombres de los servicios, y no con el numero de puerto
+ en el cual corren.
+
+
+
+ * EJEMPLO DE FICHERO DE REGLAS
+
+   Este fichero de reglas es el que uso con mis kernels Linux 2.2.x,
+ traduciendolo previamente mediante: # hlfl ipchains <reglas.hlfl> reglas
+
+ ---------- comienza reglas.hlfl ----------
+
+ # Defino variables de las interfaces, por comodidad
+ define red eth0
+ define inet ppp0
+
+ # Permito todo el trafico con localhost (127.0.0.1)
+ all (any) <-> (any) [lo]
+ # Permito todo el trafico con la red local (192.168.1.0)
+ all (any) <-> (any) [red]
+ # Podria haber juntado las 2 reglas anteriores en una, pero asi se ve mejor
+
+ # Permito el trafico TCP saliente desde mi maquina a internet
+ tcp (any) -> (any) [inet]
+
+ # Permito conexiones TCP al puerto 80 (a veces hay que montar el apache) y al
+ # puerto 59 (conexiones DCC del IRC) y las logueo
+ tcp (any 80,59) <- log (any) [inet]
+
+ # Permito conexiones TCP a puertos superiores al 1024
+ tcp (any 1024-) <- (any) [inet]
+
+ # Permitimos conexiones UDP al puerto 53 y superiores al 1024 cuando el
+ # host remoto ha iniciado la conexion desde su puerto 53. Esto permite
+ # conexion con los servidores de nombres para poder resolver las DNS.
+ udp (any 53,1024-) <=>> (any 53) [inet]
+
+ # Conexiones ICMP para permitirnos el uso de ping
+ icmp (any echo-request) -> (any)
+ icmp (any) <- (any echo-reply)
+
+ ---------- acaba reglas.hlfl ----------
+
+   El propio paquete HLFL contiene unos ficheros de reglas (sample_1.hlfl,
+ sample_2.hlfl y sample_3.hlfl) con ejemplos muy interesantes.
+
+
+
+ * CONCLUSION
+
+   HLFL es un lenguaje de reglas sencillo y potente. Permite una portabilidad
+ total entre sistemas, y ahorra tiempo y dinero. De momento no es muy
+ conocido (al menos yo no he encontrado muchos sites en internet que hablen de
+ el, ni mucha gente que lo conozca) pero, como todo, esperemos a la version
+ 1.0 a ver que pasa ..
+
+ Para mas informacion sobre HLFL:
+	http://www.hlfl.org
+	man hlfl :)
+
+
+ Miguel Salva
