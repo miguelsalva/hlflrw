@@ -2,7 +2,7 @@
 
 **This is a legacy project and it remains here for historical reasons.**
 The HLFL paper was written in 2002 and published by Robota, a well known spanish
-security company. The HLFLRW script was also coded in 2002 and introduced in the 
+security company. The HLFLRW script was also coded in 2002 and presented in the 
 2003 No cON Name security congress in Palma de Mallorca, Spain.
 
 ---
